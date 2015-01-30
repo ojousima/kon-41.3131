@@ -1,0 +1,178 @@
+Cmp-Mod V01 Created by Cvpcb (2014-08-05 BZR 5054)-product   date = Fri 30 Jan 2015 16:51:40 EET
+
+BeginCmp
+TimeStamp = /54C22E30;
+Reference = C1;
+ValeurCmp = 2u2;
+IdModule  = smd_passives:SMD0603_WAVE;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C2875C;
+Reference = C2;
+ValeurCmp = 2u2;
+IdModule  = smd_passives:SMD0603_WAVE;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C25CB3;
+Reference = C3;
+ValeurCmp = 100n;
+IdModule  = smd_passives:SMD0603_WAVE;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C288E9;
+Reference = D1;
+ValeurCmp = RB531S-30TE61;
+IdModule  = SMD_Packages:SOD-523;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C263C4;
+Reference = D2;
+ValeurCmp = RB531S-30TE61;
+IdModule  = SMD_Packages:SOD-523;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C26179;
+Reference = D3;
+ValeurCmp = RB531S-30TE61;
+IdModule  = SMD_Packages:SOD-523;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C263CA;
+Reference = D4;
+ValeurCmp = RB531S-30TE61;
+IdModule  = SMD_Packages:SOD-523;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C2622C;
+Reference = D5;
+ValeurCmp = RB531S-30TE61;
+IdModule  = SMD_Packages:SOD-523;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C263D0;
+Reference = D6;
+ValeurCmp = RB531S-30TE61;
+IdModule  = SMD_Packages:SOD-523;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C26257;
+Reference = D7;
+ValeurCmp = RB531S-30TE61;
+IdModule  = SMD_Packages:SOD-523;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C263D6;
+Reference = D8;
+ValeurCmp = RB531S-30TE61;
+IdModule  = SMD_Packages:SOD-523;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C2628C;
+Reference = D9;
+ValeurCmp = RB531S-30TE61;
+IdModule  = SMD_Packages:SOD-523;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C27335;
+Reference = JP1;
+ValeurCmp = JUMPER;
+IdModule  = Resistors_SMD:R_0201;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C27523;
+Reference = JP2;
+ValeurCmp = JUMPER;
+IdModule  = Resistors_SMD:R_0201;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C276FC;
+Reference = JP3;
+ValeurCmp = JUMPER;
+IdModule  = Resistors_SMD:R_0201;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C27791;
+Reference = JP4;
+ValeurCmp = JUMPER;
+IdModule  = Resistors_SMD:R_0201;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C269E1;
+Reference = P1;
+ValeurCmp = CONN_01X02;
+IdModule  = Pin_Headers:Pin_Header_Angled_1x02;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C26810;
+Reference = P2;
+ValeurCmp = CONN_01X04;
+IdModule  = Pin_Headers:Pin_Header_Angled_1x04;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C22D63;
+Reference = R1;
+ValeurCmp = R;
+IdModule  = smd_passives:SMD0603_WAVE;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C2660E;
+Reference = R2;
+ValeurCmp = R;
+IdModule  = smd_passives:SMD0603_WAVE;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C2664F;
+Reference = R3;
+ValeurCmp = R;
+IdModule  = smd_passives:SMD0603_WAVE;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C266A4;
+Reference = R4;
+ValeurCmp = R;
+IdModule  = smd_passives:SMD0603_WAVE;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C266C1;
+Reference = R5;
+ValeurCmp = R;
+IdModule  = smd_passives:SMD0603_WAVE;
+EndCmp
+
+BeginCmp
+TimeStamp = /54C229C7;
+Reference = U1;
+ValeurCmp = TSYS01;
+IdModule  = Housings_DFN_QFN:QFN-16-1EP_4x4mm_Pitch0.65mm;
+EndCmp
+
+BeginCmp
+TimeStamp = /54CB446A;
+Reference = U2;
+ValeurCmp = SP6213;
+IdModule  = Housings_SOT-23_SOT-143_TSOT-6:SC70-6_Handsoldering;
+EndCmp
+
+EndListe
