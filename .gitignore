@@ -29,8 +29,8 @@
 *.hex
 
 #gedit backup files
-*.~
+*~
 
 #kicad backup files
+*-bak
 *.bak
-
