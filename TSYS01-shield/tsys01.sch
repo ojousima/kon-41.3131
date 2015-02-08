@@ -1,6 +1,13 @@
 EESchema Schematic File Version 2
+LIBS:linear
+LIBS:device
+LIBS:sensors
+LIBS:regul
+LIBS:conn
+LIBS:power
+LIBS:special
 LIBS:tsys01-cache
-EELAYER 24 0
+EELAYER 25 0
 EELAYER END
 $Descr A4 11693 8268
 encoding utf-8
@@ -14,17 +21,6 @@ Comment2 ""
 Comment3 ""
 Comment4 ""
 $EndDescr
-$Comp
-L TSYS01 U1
-U 1 1 54C229C7
-P 5800 4450
-F 0 "U1" H 5800 4100 60  0000 C CNN
-F 1 "TSYS01" H 5800 4800 60  0000 C CNN
-F 2 "Housings_DFN_QFN:QFN-16-1EP_4x4mm_Pitch0.65mm" H 5800 4450 60  0001 C CNN
-F 3 "" H 5800 4450 60  0000 C CNN
-	1    5800 4450
-	1    0    0    -1  
-$EndComp
 $Comp
 L R R1
 U 1 1 54C22D63
@@ -632,4 +628,28 @@ F 3 "https://www.exar.com/common/content/document.ashx?id=654" H 3200 4550 60  0
 	1    3350 4200
 	1    0    0    -1  
 $EndComp
+$Comp
+L TSYS01 U?
+U 1 1 54D783B3
+P 5800 4450
+F 0 "U?" H 5800 4700 60  0000 C CNN
+F 1 "TSYS01" H 5800 4800 60  0000 C CNN
+F 2 "" H 5800 4450 60  0000 C CNN
+F 3 "" H 5800 4450 60  0000 C CNN
+	1    5800 4450
+	1    0    0    -1  
+$EndComp
+$Comp
+L GNDA #PWR?
+U 1 1 54D78434
+P 5800 5450
+F 0 "#PWR?" H 5800 5200 60  0001 C CNN
+F 1 "GNDA" H 5800 5300 60  0000 C CNN
+F 2 "" H 5800 5450 60  0000 C CNN
+F 3 "" H 5800 5450 60  0000 C CNN
+	1    5800 5450
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	5800 5050 5800 5450
 $EndSCHEMATC

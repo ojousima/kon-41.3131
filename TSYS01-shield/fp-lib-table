@@ -85,4 +85,5 @@
   (lib (name Valves)(type Github)(uri ${KIGITHUB}/Valves.pretty)(options "")(descr "The way you like them."))
   (lib (name Wire_Connections_Bridges)(type Github)(uri ${KIGITHUB}/Wire_Connections_Bridges.pretty)(options "")(descr "The way you like them."))
   (lib (name Wire_Pads)(type Github)(uri ${KIGITHUB}/Wire_Pads.pretty)(options "")(descr "The way you like them."))
+  (lib (name pin_header_fork)(type Github)(uri https://github.com/ojousima/Pin_Headers.pretty)(options "")(descr ""))
 )
