@@ -1,0 +1,45 @@
+Cmp-Mod V01 Created by Cvpcb (2014-08-05 BZR 5054)-product   date = Thu 19 Feb 2015 19:55:41 EET
+
+BeginCmp
+TimeStamp = /54E62352;
+Reference = P1;
+ValeurCmp = CONN_01X01;
+IdModule  = Connect:1pin;
+EndCmp
+
+BeginCmp
+TimeStamp = /54E623A4;
+Reference = P2;
+ValeurCmp = CONN_01X01;
+IdModule  = Connect:1pin;
+EndCmp
+
+BeginCmp
+TimeStamp = /54E623EF;
+Reference = P3;
+ValeurCmp = CONN_01X01;
+IdModule  = Connect:1pin;
+EndCmp
+
+BeginCmp
+TimeStamp = /54E62446;
+Reference = P4;
+ValeurCmp = CONN_01X01;
+IdModule  = Connect:1pin;
+EndCmp
+
+BeginCmp
+TimeStamp = /54E624CB;
+Reference = P5;
+ValeurCmp = CONN_01X01;
+IdModule  = Connect:1pin;
+EndCmp
+
+BeginCmp
+TimeStamp = /54E62516;
+Reference = P6;
+ValeurCmp = CONN_01X01;
+IdModule  = Connect:1pin;
+EndCmp
+
+EndListe
