@@ -184,19 +184,32 @@ void loop() {
   //Deselect sensor
   digitalWrite(chipSelectPin, HIGH);  
 
-  uint32_t ADC16 = (adc_values[0] << 8) + adc_values[1];
+  uint32_t ADC16 = (adc_values[0]);
+  ADC16 = ADC16<<8;
+  ADC16 += adc_values[1];
+  
+  float FloatADC16 = ADC16;
 
   #ifdef TSYS_DEBUG  
   Serial.print(F("ADC 16: "));
   Serial.println(ADC16);
+  Serial.print(F("Float ADC 16: "));
+  Serial.println(FloatADC16);
   #endif
   
-  float term1 = scale_k4 * (float)calibration_values[0] * pow(ADC16, 4);
-  float term2 = scale_k3 * (float)calibration_values[1] * pow(ADC16, 3);
-  float term3 = scale_k2 * (float)calibration_values[2] * pow(ADC16, 2);
-  float term4 = scale_k1 * (float)calibration_values[3] * ADC16;
+  float term1 = scale_k4 * (float)calibration_values[0] * pow(FloatADC16, 4);
+  float term2 = scale_k3 * (float)calibration_values[1] * pow(FloatADC16, 3);
+  float term3 = scale_k2 * (float)calibration_values[2] * pow(FloatADC16, 2);
+  float term4 = scale_k1 * (float)calibration_values[3] * FloatADC16;
   float term5 = scale_k0 * (float)calibration_values[4];
   float temperature = term1 + term2 + term3 + term4 + term5;
+
+  Serial.print("Term 1: ");
+  Serial.println(term1);
+  Serial.print("scale_k4: ");
+  Serial.println(scale_k4);
+  Serial.print("power");
+  Serial.println(pow(FloatADC16, 4));
 
   Serial.print(F(" Temperature: "));
   Serial.println(temperature);
