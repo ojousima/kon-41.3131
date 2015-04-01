@@ -9,7 +9,7 @@
 #define TSYS_READ_5    0xAA
 #define TSYS_READ_6    0xAC
 #define TSYS_READ_7    0xAE
-#define TSYS_DEBUG     0
+//#define TSYS_DEBUG     0
 
 // the sensor communicates using SPI, so include the library:
 #include <SPI.h>
@@ -23,14 +23,57 @@ const int clkPin = 13;
 
 uint8_t coefficients[10] = { 0 };
 uint8_t adc_values[3]   = { 0 };
-#define ADC_VALUES_LENGTH 3
 uint16_t calibration_values[5] = { 0 };
+long long ADC_DATA = 0;
 
-const float scale_k4 = -2.0;
-const float scale_k3 = -4.0;
-const float scale_k2 = -2.0;
-const float scale_k1 = 1.0;
-const float scale_k0 = -1.5;
+//Made by Apocalyt, precalculated constants of powers of 10
+#include <math.h> //for calculating powers
+const float TSYS_POW_A = 0.0000056234132519034908039495103977648123146825104309869166408; //10^(-21/4)
+const float TSYS_POW_B = 0.0000046415888336127788924100763509194465765513491250112436376; //10^(-16/3)
+const float TSYS_POW_C = 0.0000031622776601683793319988935444327185337195551393252168268; //10^(-11/2)
+const float TSYS_POW_D = 0.000001; // 10^(-6/1)
+const float TSYS_POW_E = 0.01; //10^(-2/1)
+
+const int lowerHeaterPin = 9;
+
+const int upperHeaterPin = 3;
+
+const int fanPin = 6;
+
+/**
+ * PID function
+ */
+
+float pidITerm = 0;
+
+float pid(float error, float P, float I, float D, float h, float maxI, float maxOutput) { 
+  // d term is not implemented yet
+  float control = 0;
+	
+  pidITerm += I*error*h;
+	
+  // Limit the error integral  
+  if (pidITerm < -maxI) {
+    pidITerm = -maxI;
+  }
+  if (pidITerm > maxI) {
+    pidITerm = maxI;
+  }
+	
+  control = P*error + pidITerm;
+	
+  // limit max output  
+  if(control < -maxOutput) {
+    return -maxOutput;
+  }
+	
+  if(control > maxOutput) {
+    return maxOutput;
+  }	
+
+  // return control
+  return control;
+}
 
 void setup() {
   Serial.begin(9600);
@@ -119,17 +162,25 @@ void setup() {
     Serial.print(4-index); 
     Serial.print(": ");
     Serial.println(calibration_value);
-    Serial.println(calibration_values[index]);    
     #endif
   }
+  
+ //init PWM pins
+ pinMode(upperHeaterPin, OUTPUT); 
+ pinMode(lowerHeaterPin, OUTPUT);
+ pinMode(fanPin, OUTPUT);
     
   
  Serial.println(F("Init OK"));
- Serial.println(calibration_values[0]);
+
+ analogWrite(upperHeaterPin, 200);
+ analogWrite(lowerHeaterPin, 200);
+ analogWrite(fanPin, 0);
+
 }
 
 void loop() {
- Serial.println(calibration_values[0]);
+
   #ifdef TSYS_DEBUG
   Serial.println(F("Starting read"));
   #endif
@@ -145,8 +196,6 @@ void loop() {
      Serial.println(F("Sensor does not respond to start ADC"));
      while(1); 
   }
-  Serial.print(F("Cal 0 after start ADC: "));
-  Serial.println(calibration_values[0]);
   
   //MISO comes high after conversion is done
   long timeoutCnt = millis();
@@ -160,10 +209,7 @@ void loop() {
      while(1);
     }   
   }
-  #ifdef TSYS_DEBUG
-  Serial.print(F("Cal 0 after ADC done: "));
-  Serial.println(calibration_values[0]);
-  #endif
+ 
   //Deselect sensor
   digitalWrite(chipSelectPin, HIGH);  
   delay(1);
@@ -174,46 +220,103 @@ void loop() {
 
   //Read command
   SPI.transfer(TSYS_READ_ADC);
-  for(uint8_t index = 0; index < ADC_VALUES_LENGTH; index ++){
+  for(uint8_t index = 0; index < 4; index ++){
     adc_values[index] = SPI.transfer(0x00);
   }
-  #ifdef TSYS_DEBUG
-  Serial.print(F("Cal 0 after ADC read: "));
-  Serial.println(calibration_values[0]);  
-  #endif
+  
   //Deselect sensor
   digitalWrite(chipSelectPin, HIGH);  
-
-  uint32_t ADC16 = (adc_values[0]);
-  ADC16 = ADC16<<8;
-  ADC16 += adc_values[1];
   
-  float FloatADC16 = ADC16;
-
-  #ifdef TSYS_DEBUG  
+  uint16_t ADC16 = adc_values[0];
+  ADC16 <<= 8;
+  ADC16 += adc_values[1];  
+  
   Serial.print(F("ADC 16: "));
   Serial.println(ADC16);
-  Serial.print(F("Float ADC 16: "));
-  Serial.println(FloatADC16);
-  #endif
   
-  float term1 = scale_k4 * (float)calibration_values[0] * pow(FloatADC16, 4);
-  float term2 = scale_k3 * (float)calibration_values[1] * pow(FloatADC16, 3);
-  float term3 = scale_k2 * (float)calibration_values[2] * pow(FloatADC16, 2);
-  float term4 = scale_k1 * (float)calibration_values[3] * FloatADC16;
-  float term5 = scale_k0 * (float)calibration_values[4];
+  //calculate temperature polynomial
+  /*Causes floating point rounding erros
+  float temp = 0;
+  temp += -2.0 * calibration_values[0] * 1E-21 * ADC16*ADC16*ADC16*ADC16; //k4
+  temp += 4.0 * calibration_values[1] * 1E-16 * ADC16*ADC16*ADC16; //k3  
+  temp += -2.0 * calibration_values[2] * 1E-11 * ADC16*ADC16; //k2
+  temp += 1.0 * calibration_values[3] * 1E-6 * ADC16; //k1
+  temp += -1.5 * calibration_values[4] * 1E-2; //k0
+  */
+  /*
+  ADC_DATA = -2 * calibration_values[0] * POW(10, 0) * ADC16*ADC16*ADC16*ADC16; //k4;
+  ADC_DATA += 4 * calibration_values[1] * POW(10, 5) * ADC16*ADC16*ADC16; //k3;  
+  ADC_DATA += -2 * calibration_values[2] * POW(10, 10) * ADC16*ADC16; //k2  
+  ADC_DATA += 1 * calibration_values[3] * POW(10, 15) * ADC16; //k1  
+  ADC_DATA += -15 * calibration_values[4] * POW(10, 18); //k0
+
+  Serial.print(F(" Temperature: "));
+  
+  uint32_t temp = ADC_DATA / POW(10, 21);
+  
+  Serial.println(temp);
+  */
+  
+  //By Apocalyt, 
+  // calculation of the terms, one by one to avoid accumulating error
+  float term1 = (-2.0) * calibration_values[0] * pow(TSYS_POW_A * ADC16, 4);
+  float term2 = 4.0 * calibration_values[1] * pow(TSYS_POW_B * ADC16, 3);
+  float term3 = (-2.0) * calibration_values[2] * pow(TSYS_POW_C * ADC16, 2);
+  float term4 = calibration_values[3] * TSYS_POW_D * ADC16;
+  float term5 = (-1.5) * calibration_values[4] * TSYS_POW_E;
+  
+  //final temperature
   float temperature = term1 + term2 + term3 + term4 + term5;
+  
+    // Temperary definition of goal temp and PID params
+  float goalTemperature = 27;
+  float P = 1;
+  float I = 0.01;
+  float D = 0;
+  float h = 1;
+  float maxI = 0.5;
+  float maxOutput = 1;
+  
+  float error = goalTemperature - temperature;
+  
+  float control = pid(error, P, I, D, h, maxI, maxOutput);
 
-  Serial.print("Term 1: ");
-  Serial.println(term1);
-  Serial.print("scale_k4: ");
-  Serial.println(scale_k4);
-  Serial.print("power");
-  Serial.println(pow(FloatADC16, 4));
-
+  float fanControl = error;
+  if(error > 1){
+   fanControl = 1; 
+  }
+  
+  if(error < 0 )
+  {
+    fanControl = 1;
+  }  
+  
+  // scale control for PWM
+  if(control < 0) {
+    control = 0;
+  }
+  
+  byte controlPWM = (byte) (control*255); 
+  byte fanPWM = (byte) (fanControl*255); 
+  
+  analogWrite(upperHeaterPin, 255-controlPWM); 
+  analogWrite(lowerHeaterPin, 255-controlPWM); 
+  analogWrite(fanPin, 255-fanPWM); 
+   
+  Serial.print(F(" PID debug information: "));
+  Serial.print(F(" Control: "));
+  Serial.println(control);
+  Serial.print(F(" ControlPWM: "));
+  Serial.println(controlPWM);
+  Serial.print(F(" FanPWM: "));
+  Serial.println(fanPWM);
+  
   Serial.print(F(" Temperature: "));
   Serial.println(temperature);
   
+  
   delay(1000);
+  
 }
+
 
