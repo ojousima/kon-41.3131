@@ -12,7 +12,7 @@
 #define TSYS_READ_7    0xAE
 
 #define TSYS_DEBUG     0
-  #if TSYS_DEBUG
+#if TSYS_DEBUG
 #endif
 
 #define MATH_DEBUG  0
@@ -22,6 +22,12 @@
   // Memory diagnostics
   #include <MemoryFree.h>
 #endif
+
+#define CSV_OUTPUT 1
+
+//TODO: Blow fan at full speed for a while
+#define FLUSH_AT_START 1
+
 // the sensor communicates using SPI, so include the library:
 #include <SPI.h>
 const int chipSelectPin = 14;
@@ -75,6 +81,9 @@ float h = 1;
 float u_t = 0;
 float y_t = 0;
 float y_th = 0;
+// Is the fan on?
+byte fanOn = 1;
+byte fanCounter = 0;
 
 /**
  * PID function
@@ -85,9 +94,7 @@ float pidITerm = 0;
 float pid(float error, float P, float I, float D, float h, float maxI, float maxOutput) { 
   // d term is not implemented yet
   float control = 0;
-	
-  pidITerm += I*error*h;
-	
+  static float lastError = 0;		
   // Limit the error integral  
   if (pidITerm < -maxI) {
     pidITerm = -maxI;
@@ -96,17 +103,26 @@ float pid(float error, float P, float I, float D, float h, float maxI, float max
     pidITerm = maxI;
   }
 	
-  control = P*error + pidITerm;
-	
+  control = P*error;
+  control = control + pidITerm;
+  control += D*(error - lastError)/h;	
   // limit max output  
-  if(control < -maxOutput) {
-    return -maxOutput;
+  if(control < 0) {
+    if(error > 0) {
+      pidITerm += I*error*h;  
+    }
+    return 0;
+  } else if(control > maxOutput) {
+    if(error < 0) {
+      pidITerm += I*error*h;  
+    }
+    return maxOutput;
   }
 	
-  if(control > maxOutput) {
-    return maxOutput;
-  }	
+  pidITerm += I*error*h;
 
+  
+  
   // return control
   return control;
 }
@@ -114,7 +130,7 @@ float pid(float error, float P, float I, float D, float h, float maxI, float max
 /*
 * State model
 */
-void temperatureBoxModel(float y_t, float t, float u_t, float* a_0, float* a_1, float* b_1, float* A_0, float* A_1, float* B_2) {
+void temperatureBoxModel(float y_t, float t, float u_t, byte fanOn , float* a_0, float* a_1, float* b_1, float* A_0, float* A_1, float* B_2) {
 //    %   Model of type:
 //    %   dz = (a_0(t,y) + a_1(t,y)z(t))dt + b_1(t,y)dW_1 + b_2(t,y)dW_2
 //    %   dy = (A_0(t,y) + A_1(t,y)z(t))dt + B_1(t,y)dW_1 + B_2(t,y)dW_2
@@ -129,8 +145,8 @@ void temperatureBoxModel(float y_t, float t, float u_t, float* a_0, float* a_1, 
     const float U = 12;
     
     // Heater resistances
-    const float R_1 = 6;
-    const float R_2 = 6;
+    const float R_1 = 9.88;
+    const float R_2 = 7.34;
     
     // Measurement device time constant
     const float tau = 4;
@@ -139,12 +155,17 @@ void temperatureBoxModel(float y_t, float t, float u_t, float* a_0, float* a_1, 
     const float P_heater = (pow(U,2)/R_1) + (pow(U,2)/R_2); //We hava to heating plates
     
     // Heat conductions
-    const float k_ha = 4;// heater <-> air -heat conduction
-    const float k_aa = 1;// ambient <-> air -heat conduction
-    const float k_as = 4;// sample <-> air -heat conduction
+    float k_ha = 6;// heater <-> air -heat conduction
+    const float k_aa = 3;// ambient <-> air -heat conduction
+    float k_as = 2;// sample <-> air -heat conduction
     
     // Air flows
-    const float Q_flow = 0.01*pow(10,-3); // airflow from outside to inside m^3/s
+    float Q_flow = 0.2*pow(10,-3); // airflow from outside to inside m^3/s
+    if(fanOn == 0) {
+      Q_flow = 0;
+      k_ha = 3;
+      k_as = 2;
+    }
     
     // Areas
     const float A_heater = 0.08*0.10;
@@ -205,27 +226,27 @@ void temperatureBoxModel(float y_t, float t, float u_t, float* a_0, float* a_1, 
     *A_0 = (-0.67/tau)*y_t;
     
     // Now for uncertainty matrises
-    b_1[0] = 0.2;
+    b_1[0] = 0.3;
     b_1[1] = 0;
     b_1[2] = 0;
     b_1[3] = 0;
     b_1[4] = 0;
-    b_1[5] = 0.2;
+    b_1[5] = 0.3;
     b_1[6] = 0; 
     b_1[7] = 0;
     b_1[8] = 0;
     b_1[9] = 0;
-    b_1[10] = 0.2;
+    b_1[10] = 0.3;
     b_1[11] = 0;
     b_1[12] = 0;
     b_1[13] = 0;
     b_1[14] = 0;
-    b_1[15] = 0.2;
+    b_1[15] = 0.3;
     
     //b_2 = zeros(4);
     //B_1[0] = [0, 0, 0, 0];
     
-    *B_2 = 0.1;
+    *B_2 = 0.05;
 }
 
 /*
@@ -438,6 +459,12 @@ void setup() {
   Serial.println(freeMemory());
 #endif
 
+#if FLUSH_AT_START
+  analogWrite(fanPin, 0);
+  delay(60000L);
+  analogWrite(fanPin, 255);
+#endif
+
   // start the SPI library:
   SPI.begin();
 
@@ -453,16 +480,16 @@ void setup() {
   SPI.transfer(TSYS_RESET);
   
   //Miso goes low when reset
-  while(digitalRead(misoPin)){
-     Serial.println(F("Sensor does not respond"));
-     delay(100); 
+  if(digitalRead(misoPin)){
+     Serial.println(F("MISO HIGH AFTER RESET"));
+     delay(2000);
   }
   
   //MISO comes high after reset
   long timeoutCnt = millis();
   while(!digitalRead(misoPin)){
-     #ifdef TSYS_DEBUG
-     Serial.println(F("Waiting for sensor reset"));
+     #if TSYS_DEBUG
+       Serial.println(F("Waiting for sensor reset"));
      #endif
     if(millis() - timeoutCnt > TSYS_TIMEOUT){
      Serial.println(F("Sensor does not respond - timout"));
@@ -473,7 +500,7 @@ void setup() {
   //Deselect sensor
   digitalWrite(chipSelectPin, HIGH); 
   
-#ifdef TSYS_DEBUG
+#if TSYS_DEBUG
   Serial.println(F("Coefficients:"));
 #endif
  
@@ -543,6 +570,11 @@ void setup() {
   Serial.println(freeMemory());
 #endif
 
+#if CSV_OUTPUT
+//Millis;Target temperature; Measured temperature; Heater PWM; Heater estimate; Air estimate; Sample estimate
+  Serial.println("Milliseconds;Target temperature; Measured temperature; Heater PWM; Heater estimate; Air estimate; Sample estimate");
+#endif
+
 }
 
 void loop() {
@@ -568,12 +600,12 @@ void loop() {
   //MISO comes high after conversion is done
   long timeoutCnt = millis();
   while(!digitalRead(misoPin)){
-    #ifdef TSYS_DEBUG    
-    Serial.println(F("Waiting for conversion"));
+    #if TSYS_DEBUG    
+      Serial.println(F("Waiting for conversion"));
     #endif 
 
     if(millis()-timeoutCnt > TSYS_TIMEOUT){
-     Serial.println(F("ADC Conversion timeout"));
+       Serial.println(F("ADC Conversion timeout"));
      while(1);
     }   
   }
@@ -598,32 +630,12 @@ void loop() {
   uint16_t ADC16 = adc_values[0];
   ADC16 <<= 8;
   ADC16 += adc_values[1];  
-  
+
+#if TSYS_DEBUG
   Serial.print(F("ADC 16: "));
   Serial.println(ADC16);
-  
-  //calculate temperature polynomial
-  /*Causes floating point rounding erros
-  float temp = 0;
-  temp += -2.0 * calibration_values[0] * 1E-21 * ADC16*ADC16*ADC16*ADC16; //k4
-  temp += 4.0 * calibration_values[1] * 1E-16 * ADC16*ADC16*ADC16; //k3  
-  temp += -2.0 * calibration_values[2] * 1E-11 * ADC16*ADC16; //k2
-  temp += 1.0 * calibration_values[3] * 1E-6 * ADC16; //k1
-  temp += -1.5 * calibration_values[4] * 1E-2; //k0
-  */
-  /*
-  ADC_DATA = -2 * calibration_values[0] * POW(10, 0) * ADC16*ADC16*ADC16*ADC16; //k4;
-  ADC_DATA += 4 * calibration_values[1] * POW(10, 5) * ADC16*ADC16*ADC16; //k3;  
-  ADC_DATA += -2 * calibration_values[2] * POW(10, 10) * ADC16*ADC16; //k2  
-  ADC_DATA += 1 * calibration_values[3] * POW(10, 15) * ADC16; //k1  
-  ADC_DATA += -15 * calibration_values[4] * POW(10, 18); //k0
+#endif
 
-  Serial.print(F(" Temperature: "));
-  
-  uint32_t temp = ADC_DATA / POW(10, 21);
-  
-  Serial.println(temp);
-  */
   
   //By Apocalyt, 
   // calculation of the terms, one by one to avoid accumulating error
@@ -640,7 +652,7 @@ void loop() {
     m_t[0] = temperature; 
     m_t[1] = temperature;
     m_t[2] = temperature;
-    m_t[3] = temperature;
+    m_t[3] = 21;
     // Last measurement and current measurement
     
     y_t = temperature;
@@ -652,7 +664,7 @@ void loop() {
     gamma_t[2] = 0;
     gamma_t[3] = 0;
     gamma_t[4] = 0; 
-    gamma_t[5] = 0.01; 
+    gamma_t[5] = 0.1; 
     gamma_t[6] = 0;
     gamma_t[7] = 0;
     gamma_t[8] = 0;  
@@ -662,9 +674,9 @@ void loop() {
     gamma_t[12] = 0;  
     gamma_t[13] = 0; 
     gamma_t[14] = 0;
-    gamma_t[15] = 0.01;
+    gamma_t[15] = 0.1;
   }
-  temperatureBoxModel(temperature,t,u_t,a_0,a_1, b_1, &A_0, A_1, &B_2);
+  temperatureBoxModel(temperature,t,u_t, fanOn,a_0,a_1, b_1, &A_0, A_1, &B_2);
   t = t + 1;
 
 #if MATH_DEBUG
@@ -695,24 +707,37 @@ void loop() {
 #if MATH_DEBUG  
   Matrix.Print((float*)gamma_t, 4, 4, String("Covariance"));
 #endif
+
+#if SYSTEM_DEBUG
   Serial.println("");
   Matrix.Print((float*)m_t, 1, 4,"Filtered states: Heater, Air, Sample, Ambient");
   Serial.println("");
   Serial.println("Innovation");
   Serial.print(epsilon_th);
   Serial.println("");
-//#endif  
+#endif  
   
   // Temperary definition of goal temp and PID params
-  float goalTemperature = 27;
-  float P = 1;
-  float I = 0.01;
-  float D = 0;
+  float goalTemperature = 30;
+  float P = 0.2;
+  float I = 0.03;
+  float D = 1;
   float h = 1;
-  float maxI = 0.5;
+  float maxI = 0.75;
   float maxOutput = 1;
   
-  float error = goalTemperature - temperature;
+  // turn fan of after we have been under 0.11 C to the goal for 5 rotations
+  if(abs(goalTemperature - temperature) < 0.5) {
+    if( fanCounter < 255 ) {
+      fanCounter = fanCounter + 5;  
+    }
+  }
+  if(fanCounter == 255) {
+     fanOn = 0; 
+  }
+  
+  
+  float error = goalTemperature - m_t[1];
   
   float control = pid(error, P, I, D, h, maxI, maxOutput);
   
@@ -734,24 +759,50 @@ void loop() {
   }
   
   byte controlPWM = (byte) (control*255); 
-  //byte fanPWM = (byte) (fanControl*255); 
+  byte fanPWM = fanCounter; 
+  if(temperature > goalTemperature + 0.2 && fanCounter > 200) {
+   fanPWM = 200; 
+  }
   
   analogWrite(upperHeaterPin, 255-controlPWM); 
   analogWrite(lowerHeaterPin, 255-controlPWM); 
-  analogWrite(fanPin, 200); 
+  analogWrite(fanPin, fanPWM); 
    
-//#if MATH_DEBUG   
+#if SYSTEM_DEBUG   
   Serial.print(F(" PID debug information: "));
   Serial.print(F(" Control: "));
   Serial.println(control);
   Serial.print(F(" ControlPWM: "));
   Serial.println(controlPWM);
   //Serial.print(F(" FanPWM: "));
-  //Serial.println(fanPWM);
-//#endif  
- 
+  //Serial.println(fanPWM);  
   Serial.print(F(" Temperature: "));
   Serial.println(temperature);
+#endif
+
+//Millis;Target temperature; Measured temperature; Heater PWM; Heater estimate; Air estimate; Sample estimate
+#if CSV_OUTPUT
+  Serial.print(millis());
+  Serial.print(";");
+
+  Serial.print(goalTemperature);
+  Serial.print(";");
+  
+  Serial.print(temperature);
+  Serial.print(";");
+  
+  Serial.print(controlPWM/2.55 );
+  Serial.print(";");
+  
+  Serial.print(m_t[0]);
+  Serial.print(";");
+  
+  Serial.print(m_t[1]);
+  Serial.print(";");
+  
+  Serial.print(m_t[2]);
+  Serial.println(";");
+ #endif 
   
   
   delay(1000);
