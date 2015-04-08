@@ -1,3 +1,4 @@
+#include <MatrixMath.h>
 
 #define TSYS_RESET     0x1E
 #define TSYS_START_ADC 0x48
@@ -12,8 +13,6 @@
 #define TSYS_READ_7    0xAE
 
 #define TSYS_DEBUG     0
-#if TSYS_DEBUG
-#endif
 
 #define MATH_DEBUG  0
 
@@ -26,7 +25,7 @@
 #define CSV_OUTPUT 1
 
 //TODO: Blow fan at full speed for a while
-#define FLUSH_AT_START 1
+#define FLUSH_AT_START 0
 
 // the sensor communicates using SPI, so include the library:
 #include <SPI.h>
@@ -66,6 +65,7 @@ const float TSYS_POW_E = 0.01; //10^(-2/1)
 
 float a_0[4] = { 0 };
 float a_1[16] = { 0 }; //4X4 matrix
+float a_2[16] = { 0 };
 float b_1[16] = { 0 };
 float A_0;
 float A_1[4] = { 0 };
@@ -76,13 +76,13 @@ float m_th[4] = { 0 }; // new state
 float gamma_th[16] = { 0 }; // new state covariance
 float epsilon_th = 0; // new innovation process
 // Inital values for 
-float t = 0;
 float h = 1;
 float u_t = 0;
 float y_t = 0;
 float y_th = 0;
-// Is the fan on?
-byte fanOn = 1;
+unsigned int t = 0;
+
+float fanPower = 0;
 byte fanCounter = 0;
 
 /**
@@ -130,7 +130,7 @@ float pid(float error, float P, float I, float D, float h, float maxI, float max
 /*
 * State model
 */
-void temperatureBoxModel(float y_t, float t, float u_t, byte fanOn , float* a_0, float* a_1, float* b_1, float* A_0, float* A_1, float* B_2) {
+void temperatureBoxModel(float y_t, float t, float u_t, float fanPower , float* a_0, float* a_1,float* a_2, float* b_1, float* A_0, float* A_1, float* B_2) {
 //    %   Model of type:
 //    %   dz = (a_0(t,y) + a_1(t,y)z(t))dt + b_1(t,y)dW_1 + b_2(t,y)dW_2
 //    %   dy = (A_0(t,y) + A_1(t,y)z(t))dt + B_1(t,y)dW_1 + B_2(t,y)dW_2
@@ -145,28 +145,26 @@ void temperatureBoxModel(float y_t, float t, float u_t, byte fanOn , float* a_0,
     const float U = 12;
     
     // Heater resistances
-    const float R_1 = 9.88;
-    const float R_2 = 7.34;
+    const float R_1 = 5.5;
+    const float R_2 = 7.4;
     
     // Measurement device time constant
-    const float tau = 4;
+    float tau = 4;
+    tau = 1.5*tau*(1-fanPower) + tau;
     
     // Heater power
     const float P_heater = (pow(U,2)/R_1) + (pow(U,2)/R_2); //We hava to heating plates
     
     // Heat conductions
-    float k_ha = 6;// heater <-> air -heat conduction
-    const float k_aa = 3;// ambient <-> air -heat conduction
+    float k_ha = 8;// heater <-> air -heat conduction
+    const float k_aa = 5;// ambient <-> air -heat conduction
     float k_as = 2;// sample <-> air -heat conduction
     
     // Air flows
-    float Q_flow = 0.2*pow(10,-3); // airflow from outside to inside m^3/s
-    if(fanOn == 0) {
-      Q_flow = 0;
-      k_ha = 3;
-      k_as = 2;
-    }
-    
+    float Q_flow = 0.12*pow(10,-3); // airflow from outside to inside m^3/s
+    Q_flow = Q_flow*fanPower*0.7 + 0.3*Q_flow;
+    k_ha = 0.6*fanPower*k_ha + 0.4*k_ha;
+   
     // Areas
     const float A_heater = 0.08*0.10;
     const float A_ha = 2*2*A_heater;// heater <-> air -area
@@ -180,7 +178,8 @@ void temperatureBoxModel(float y_t, float t, float u_t, byte fanOn , float* a_0,
     const float V_sample = A_sample*0.005; // sample volume
     
     //Heat capacities
-    const float C_heater = V_heater*0.6*1850000;
+    float C_heater = V_heater*0.6*1850000 + 2*0.000035*A_heater*8960*385*2;
+    C_heater = C_heater * 1.15;
     const float C_air = 1.204*1012*V_box;
     const float C_sample = V_sample*670*1700; // expecting wood (density of birch)
     a_1[0] = -k_ha*A_ha*(1/C_heater);
@@ -201,7 +200,7 @@ void temperatureBoxModel(float y_t, float t, float u_t, byte fanOn , float* a_0,
     a_1[15] = 0;
 
 #if MATH_DEBUG
-    Serial.println("u_t, l/C_heater , P_heater");
+    Serial.println(F("u_t, l/C_heater , P_heater"));
     Serial.println(u_t,6);
     Serial.println(1/C_heater,6);
     Serial.println(P_heater,6);
@@ -211,9 +210,14 @@ void temperatureBoxModel(float y_t, float t, float u_t, byte fanOn , float* a_0,
     a_0[1] = 0;
     a_0[2] = 0;
     a_0[3] = 0;
+    
+    a_2[0] = P_heater/C_heater;  a_2[1] = 0;        a_2[2] = 0;    a_2[3] = 0;
+    a_2[4] = 0;                  a_2[5] = 0.001;    a_2[6] = 0;    a_2[7] = 0;
+    a_2[8] = 0;                  a_2[9] = 0;        a_2[10] = 0.001;   a_2[11] = 0;
+    a_2[12] = 0;                a_2[13] = 0;        a_2[14] = 0;   a_2[15] = 0.001;
 
 #if MATH_DEBUG
-    Serial.println("a_0[0]");
+    Serial.println(F("a_0[0]"));
     Serial.println(a_0[0],6);
 #endif
 
@@ -224,31 +228,34 @@ void temperatureBoxModel(float y_t, float t, float u_t, byte fanOn , float* a_0,
     A_1[3] = 0;
     
     *A_0 = (-0.67/tau)*y_t;
-    
+#if SYS_DEBUG
+    Serial.println(F("a_0[0]"));
+    Serial.println(a_0[0],6);
+#endif   
     // Now for uncertainty matrises
-    b_1[0] = 0.3;
+    b_1[0] = 0.4;
     b_1[1] = 0;
     b_1[2] = 0;
     b_1[3] = 0;
     b_1[4] = 0;
-    b_1[5] = 0.3;
+    b_1[5] = 0.4;
     b_1[6] = 0; 
     b_1[7] = 0;
     b_1[8] = 0;
     b_1[9] = 0;
-    b_1[10] = 0.3;
+    b_1[10] = 0.4;
     b_1[11] = 0;
     b_1[12] = 0;
     b_1[13] = 0;
     b_1[14] = 0;
-    b_1[15] = 0.3;
+    b_1[15] = 0.4;
     
     //b_2 = zeros(4);
     //B_1[0] = [0, 0, 0, 0];
     
-    *B_2 = 0.05;
-}
+    *B_2 = 0.08;
 
+}
 /*
 * Optimal Filter
 */
@@ -286,14 +293,14 @@ void discreteStateEstimatorForContinuousSystems(float* m_t, float* gamma_t, floa
     // We expect B_1 and B_2 to be 1x4 matrises
     // B_o_B = B_1*B_1' + B_2*B_2'; % Noice covariance 
 #if MATH_DEBUG
-    Serial.print("B_2:");
+    Serial.print(F("B_2:"));
     Serial.println(*B_2);
 #endif
     float B_2xB_2T = (*B_2)*(*B_2);
     
     float B_o_B = B_2xB_2T;
 #if MATH_DEBUG
-    Serial.print("B_o_B:");
+    Serial.print(F("B_o_B:"));
     Serial.println(B_o_B);
 #endif
     // We expect the b_1 and b_2 to be diagonal matrises so transpose is not needed
@@ -304,7 +311,8 @@ void discreteStateEstimatorForContinuousSystems(float* m_t, float* gamma_t, floa
     Matrix.Multiply(b_1, b_1, 4, 4, 4, b_o_b); 
 
 #if MATH_DEBUG
-    Matrix.Print(b_o_b,4,4,"b_o_b");
+    Serial.println(F("b_o_b"));
+    Matrix.Print(b_o_b,4,4,"");
 #endif
 
     // sigma = (b_o_B + gamma_t*A_1') * ((B_o_B)^(-0.5)); % Filter gain
@@ -315,16 +323,20 @@ void discreteStateEstimatorForContinuousSystems(float* m_t, float* gamma_t, floa
     Matrix.Multiply(gamma_t,A_1,4,4,1,sigma);
 
 #if MATH_DEBUG
-    Matrix.Print(gamma_t,4,4,"gamma_t");
-    Matrix.Print(A_1,1,4,"A_1");
-    Matrix.Print(sigma,1,4,"gamma_t*A_1'");
+    Serial.println(F("gamma_t"));
+    Matrix.Print(gamma_t,4,4,"");
+    Serial.println(F("A_1"));
+    Matrix.Print(A_1,1,4,"");
+    Serial.println(F("gamma_t*A_1'"));
+    Matrix.Print(sigma,1,4,"");
 #endif
 
     // get final sigma
     Matrix.Scale(sigma,1,4,pow(B_o_B,-0.5));
 
 #if MATH_DEBUG
-    Matrix.Print(sigma,1,4,"sigma");
+    Serial.println(F("sigma"));
+    Matrix.Print(sigma,1,4,"");
 #endif
 
     // epsilon_th = ((B_o_B * h)^(-0.5)) * (y_th - y_t -(A_0 + A_1*m_t)*h); % Innovation process
@@ -343,7 +355,7 @@ void discreteStateEstimatorForContinuousSystems(float* m_t, float* gamma_t, floa
     Serial.println(y_th,4);
     Serial.print(F("A_1xm_t:"));
     Serial.println(A_1xm_t[0],4);
-    Serial.print("epsilon_th:");
+    Serial.print(F("epsilon_th:"));
     Serial.println(*epsilon_th,4);
 #endif
 
@@ -357,16 +369,20 @@ void discreteStateEstimatorForContinuousSystems(float* m_t, float* gamma_t, floa
     sigmaxsqrthxepsilon_th[3] = sigma[3];
     
 #if MATH_DEBUG
-    Matrix.Print(sigmaxsqrthxepsilon_th,1,4,"sigmaxsqrthxepsilon_th");
+    Serial.println(F("sigmaxsqrthxepsilon_th"));
+    Matrix.Print(sigmaxsqrthxepsilon_th,1,4,"");
 #endif
 
     Matrix.Scale(sigmaxsqrthxepsilon_th,4,1,sqrt(h)*(*epsilon_th));
 
 #if MATH_DEBUG
-    Matrix.Print(sigmaxsqrthxepsilon_th,1,4,"sigmaxsqrthxepsilon_th");
+    Serial.println(F("sigmaxsqrthxepsilon_th"));
+    Matrix.Print(sigmaxsqrthxepsilon_th,1,4,"");
     // get (a_0 + a_1*m_t)*h
-    Matrix.Print(m_t,4,1,"m_t");
-    Matrix.Print(a_1,4,4,"a_1");
+    Serial.println(F("m_t"));
+    Matrix.Print(m_t,4,1,"");
+    Serial.println(F("a_1"));
+    Matrix.Print(a_1,4,4,"");
 #endif 
 
     float a_1xm_t[4];
@@ -374,33 +390,38 @@ void discreteStateEstimatorForContinuousSystems(float* m_t, float* gamma_t, floa
     Matrix.Multiply(a_1,m_t,4,4,1,a_1xm_t);
     
 #if MATH_DEBUG
-    Matrix.Print(a_1xm_t,4,1,"a_1xm_t");
+    Serial.println(F("a_1xm_t"));
+    Matrix.Print(a_1xm_t,4,1,"");
 #endif
 
     Matrix.Add(a_0, a_1xm_t, 4, 1, a_0Pa_1xm_txh);
     
 #if MATH_DEBUG
-    Matrix.Print(a_0Pa_1xm_txh,4,1,"a_0Pa_1xm_t");
+    Serial.println(F("a_0Pa_1xm_t"));
+    Matrix.Print(a_0Pa_1xm_txh,4,1,"");
 #endif
 
     Matrix.Scale(a_0Pa_1xm_txh,4,1,h);
 
-#if MATH_DEBUG    
-    Matrix.Print(a_0Pa_1xm_txh,4,1,"a_0Pa_1xm_txh");
+#if MATH_DEBUG
+    Serial.println(F("a_0Pa_1xm_txh"));
+    Matrix.Print(a_0Pa_1xm_txh,4,1,"");
 #endif
     // m_th = m_t + (a_0 + a_1*m_t)*h +sigma*sqrt(h)*epsilon_th;
     // Finally get m_th
     float tempMat[4];
     Matrix.Add(m_t,a_0Pa_1xm_txh,4,1,tempMat);
 
-#if MATH_DEBUG   
-    Matrix.Print(tempMat,4,1,"m_t + a_0Pa_1xm_txh");
+#if MATH_DEBUG
+    Serial.println(F("m_t + a_0Pa_1xm_txh"));
+    Matrix.Print(tempMat,4,1,"");
 #endif
 
     Matrix.Add(tempMat,sigmaxsqrthxepsilon_th,4,1,m_th);
 
-#if MATH_DEBUG   
-    Matrix.Print(m_th,4,1,"m_th");
+#if MATH_DEBUG
+    Serial.println(F("m_th"));
+    Matrix.Print(m_th,4,1,"");
 #endif
 
     // gamma_th = gamma_t + (a_1*gamma_t + gamma_t*a_1' + b_o_b - sigma*sigma')*h; % conditional covariance
@@ -420,24 +441,36 @@ void discreteStateEstimatorForContinuousSystems(float* m_t, float* gamma_t, floa
     Matrix.Multiply(gamma_t,a_1T,4,4,4,gamma_txa_1T);
  
 #if MATH_DEBUG
-    Matrix.Print(a_1xgamma_t,4,4, "a_1xgamma_t:");
-    Matrix.Print(gamma_txa_1T,4,4, "gamma_txa_1T:");
+    Serial.println(F("a_1xgamma_t:"));
+    Matrix.Print(a_1xgamma_t,4,4, "");
+    Serial.println(F("gamma_txa_1T:"));
+    Matrix.Print(gamma_txa_1T,4,4, "");
 #endif
+
+#if SYSTEM_DEBUG
+
+  Serial.print(F("freeMemory() before calculating gamma_th="));
+  Serial.println(freeMemory());
+#endif
+
     
     //(a_1*gamma_t + gamma_t*a_1' + b_o_b - sigma*sigma')
-    float tempoMat[16];
+    float tempoMat[16] = {0};
     Matrix.Add(a_1xgamma_t,gamma_txa_1T,4,4,tempoMat);
 #if MATH_DEBUG
-    Matrix.Print(tempoMat,4,4,"a_1xgamma_t + gamma_txa_1T");
+    Serial.println(F("a_1xgamma_t + gamma_txa_1T"));
+    Matrix.Print(tempoMat,4,4,"");
 #endif    
     Matrix.Add(tempoMat,b_o_b,4,4,tempoMat);
 #if MATH_DEBUG
-    Matrix.Print(tempoMat,4,4,"+ b_o_b");
+    Serial.println(F("+ b_o_b"));
+    Matrix.Print(tempoMat,4,4,"");
 #endif
-    Matrix.Scale(sigmaxsigmaT,4,4,-1);
-    Matrix.Add(tempoMat,sigmaxsigmaT,4,4,tempoMat);
+
+    Matrix.Subtract(tempoMat,sigmaxsigmaT,4,4,tempoMat);
 #if MATH_DEBUG
-    Matrix.Print(tempoMat,4,4,"+ sigmaXsigmaT");
+    Serial.println(F("+ sigmaXsigmaT"));
+    Matrix.Print(tempoMat,4,4,"");
 #endif 
     // gamma_th = gamma_t + (a_1*gamma_t + gamma_t*a_1' + b_o_b - sigma*sigma')*h; % conditional covariance
     Matrix.Scale(tempoMat,4,4,h);
@@ -445,17 +478,165 @@ void discreteStateEstimatorForContinuousSystems(float* m_t, float* gamma_t, floa
     Matrix.Add(gamma_t, tempoMat,4,4,gamma_th);
 
 #if MATH_DEBUG
-    Matrix.Print(gamma_th,4,4,"gamma_th");
+    Serial.println(F("gamma_th"));
+    Matrix.Print(gamma_th,4,4,"");
 #endif
+
 }
 
+/*
+*  Optimal controller
+*/
+void lqg(float* m_th, float* goalState, float* a_0, float* a_1, float* a_2, float* H, float R, float currentTime, float timeStep, float terminalTime, float* u) {
+	//Calculates optimal contorl with LQG
+	// Inverse time iteration
+	// H = importance of each state
+	// R  = Limit control
+	#if MATH_DEBUG
+            Serial.print(F("H"));
+            Matrix.Print(H,4,4,"");
+        #endif
+        float P_t[16];
+	Matrix.Copy(H,4,4,P_t);
+        #if MATH_DEBUG
+            Serial.print(F("P_t"));
+            Matrix.Print(P_t,4,4,"");
+        #endif
+        R = 1/R; // R = invR from now on
+	float a_2T[16];
+	Matrix.Transpose(a_2,4,4,a_2T);
+        #if MATH_DEBUG
+            Serial.print(F("a_2T"));
+            Matrix.Print(a_2T,4,4,"");
+        #endif
+	float a_1T[16];
+	Matrix.Transpose(a_1,4,4,a_1T);
+        #if MATH_DEBUG
+            Serial.print(F("a_1T"));
+            Matrix.Print(a_1T,4,4,"");
+        #endif
+	// a_2*inv(R)*a_2'
+	float a_2xinvRxa_2T[16];
+        float* temporary = (float*)malloc(16*sizeof(float));
+        //float temporary[16];
+        Matrix.Copy(a_2,4,4,temporary);
+	Matrix.Scale(temporary,4,4,R);
+	Matrix.Multiply(temporary,a_2T,4,4,4,a_2xinvRxa_2T);
+        #if MATH_DEBUG
+            Serial.print(F("a_2xinvRxa_2T"));
+            Matrix.Print(a_1T,4,4,"");
+        #endif
+	free(temporary);
+        #if SYSTEM_DEBUG
+          Serial.print(F("freeMemory() before Solving Riccati equation="));
+          Serial.println(freeMemory());
+        #endif
+
+    float time = terminalTime;
+    while(time > currentTime) {
+	// Solve Riccati equation iteratively
+	//P_t = -P_t -(H + a_1'*P_t + P_t*a_1 -P_t*a_2*inv(R)*a_2'*P_t)*timeStep;
+	// a_1'*P_t
+        float* a_1TxP_t = (float*)malloc(16*sizeof(float));
+	Matrix.Multiply(a_1T,P_t,4,4,4,a_1TxP_t);
+        #if MATH_DEBUG
+          Serial.print(F("a_1TxP_t"));
+          Matrix.Print(a_1TxP_t,4,4,"");
+        #endif
+	// P_t*a_1
+	float* P_txa_1 = (float*)malloc(16*sizeof(float));
+        Matrix.Multiply(P_t,a_1,4,4,4,P_txa_1);
+        #if MATH_DEBUG
+          Serial.print(F("P_txa_1"));
+          Matrix.Print(P_txa_1,4,4,"");
+        #endif
+        float a_1TxP_tPP_txa_1[16];
+        Matrix.Add(a_1TxP_t,P_txa_1,4,4,a_1TxP_tPP_txa_1);
+        free(a_1TxP_t);
+        free(P_txa_1);
+        #if MATH_DEBUG
+          Serial.print(F("a_1TxP_tPP_txa_1"));
+          Matrix.Print(a_1TxP_tPP_txa_1,4,4,"");
+        #endif
+	
+	// P_t*a_2*inv(R)*a_2'*P_t
+	float* P_txa_2xinvRxa_2T = (float*)malloc(16*sizeof(float));
+        float P_txa_2xinvRxa_2TxP_t[16];
+	Matrix.Multiply(P_t,a_2xinvRxa_2T,4,4,4,P_txa_2xinvRxa_2T);
+	Matrix.Multiply(P_txa_2xinvRxa_2T,P_t,4,4,4,P_txa_2xinvRxa_2TxP_t);
+        free(P_txa_2xinvRxa_2T);
+        #if MATH_DEBUG
+          Serial.print(F("P_txa_2xinvRxa_2TxP_t"));
+          Matrix.Print(P_txa_2xinvRxa_2TxP_t,4,4,"");
+        #endif
+
+	//H + a_1'*P_t + P_t*a_1
+        float HPa_1TxP_tPP_txa_1[16];
+	Matrix.Add(H,a_1TxP_tPP_txa_1,4,4,HPa_1TxP_tPP_txa_1);
+	// H + a_1'*P_t + P_t*a_1 -P_t*a_2*inv(R)*a_2'*P_t
+        #if MATH_DEBUG
+          Serial.print(F("HPa_1TxP_tPP_txa_1"));
+          Matrix.Print(HPa_1TxP_tPP_txa_1,4,4,"");
+        #endif
+        #if MATH_DEBUG
+          Serial.print(F("P_txa_2xinvRxa_2TxP_t"));
+          Matrix.Print(P_txa_2xinvRxa_2TxP_t,4,4,"");
+        #endif
+	float temp[16];
+	Matrix.Subtract(HPa_1TxP_tPP_txa_1,P_txa_2xinvRxa_2TxP_t,4,4,temp);
+	// P_t = -P_t -(H + a_1'*P_t + P_t*a_1 -P_t*a_2*inv(R)*a_2'*P_t)*timeStep;
+        #if MATH_DEBUG
+          Serial.print(F("HPa_1TxP_tPP_txa_1 - P_txa_2xinvRxa_2TxP_t"));
+          Matrix.Print(temp,4,4,"");
+        #endif
+	Matrix.Scale(temp,4,4,timeStep);
+	#if MATH_DEBUG
+          Serial.print(F("(H + a_1'*P_t + P_t*a_1 -P_t*a_2*inv(R)*a_2'*P_t)*timeStep"));
+          Matrix.Print(temp,4,4,"");
+        #endif
+        Matrix.Add(P_t,temp,4,4,temp);
+	#if MATH_DEBUG
+          Serial.print(F("P_t +(H + a_1'*P_t + P_t*a_1 -P_t*a_2*inv(R)*a_2'*P_t)*timeStep"));
+          Matrix.Print(temp,4,4,"");
+        #endif
+        Matrix.Subtract(P_t,temp,4,4,P_t);
+        #if MATH_DEBUG
+          Serial.print(F("P_t"));
+          Matrix.Print(P_t,4,4,"");
+        #endif
+        time = time - timeStep;
+    }
+	
+	//K = inv(R)*a_2'*P_t;
+	float K[16];
+        Matrix.Scale(a_2T,4,4,R); //a_2T = a_2T * R from now on
+        Matrix.Multiply(a_2T,P_t,4,4,4,K);
+	
+        //u = -inv(a_2)*a_0 - K*(m_th-goalState);
+        float* dynamicTemp = (float*)malloc(16*sizeof(float));
+        Matrix.Copy(a_2,4,4,dynamicTemp);
+	Matrix.Invert(dynamicTemp,4); //a_2 = inv(a_2) from now on
+	float temp2[4];
+	Matrix.Multiply(dynamicTemp,a_0,4,4,1,temp2);
+        free(dynamicTemp);
+	float temp3[16];
+	Matrix.Subtract(m_th,goalState,4,1,temp3);
+	float temp4[4];
+	Matrix.Multiply(K,temp3,4,4,1,temp4);
+	Matrix.Add(temp2,temp4,4,4,u);
+	Matrix.Scale(u,4,1,-1);
+
+        
+        //Matrix.Print(u,4,1,"u");
+
+}
 
 void setup() {
   
   Serial.begin(9600);
 
 #if SYSTEM_DEBUG
-  Serial.print("freeMemory() at begin of setup=");
+  Serial.print(F("freeMemory() at begin of setup="));
   Serial.println(freeMemory());
 #endif
 
@@ -547,7 +728,7 @@ void setup() {
 
 #if TSYS_DEBUG       
     Serial.print(4-index); 
-    Serial.print(": ");
+    Serial.print(F(": "));
     Serial.println(calibration_value);
 #endif
   }
@@ -566,19 +747,24 @@ void setup() {
  analogWrite(fanPin, CONTROL_ON_PWM);
 
 #if SYSTEM_DEBUG
-  Serial.print("freeMemory() at end of setup=");
+  Serial.print(F("freeMemory() at end of setup="));
   Serial.println(freeMemory());
 #endif
 
 #if CSV_OUTPUT
 //Millis;Target temperature; Measured temperature; Heater PWM; Heater estimate; Air estimate; Sample estimate
-  Serial.println("Milliseconds;Target temperature; Measured temperature; Heater PWM; Heater estimate; Air estimate; Sample estimate");
+  Serial.println(F("Milliseconds;Target temperature; Measured temperature; Heater PWM; Heater estimate; Air estimate; Sample estimate"));
 #endif
 
 }
 
-void loop() {
+float lastStart = 0;
 
+void loop() {
+  while(millis()*0.001 < lastStart + 1 ) {
+    
+  }
+  lastStart = millis()*0.001;
 #if SYSTEM_DEBUG
   Serial.print(F("freeMemory() at start of loop="));
   Serial.println(freeMemory());
@@ -659,12 +845,12 @@ void loop() {
     y_th = temperature;
     
     // Covariance of initial guess
-    gamma_t[0] = 0.1; 
+    gamma_t[0] = 10; 
     gamma_t[1] = 0;
     gamma_t[2] = 0;
     gamma_t[3] = 0;
     gamma_t[4] = 0; 
-    gamma_t[5] = 0.1; 
+    gamma_t[5] = 0.01; 
     gamma_t[6] = 0;
     gamma_t[7] = 0;
     gamma_t[8] = 0;  
@@ -674,22 +860,35 @@ void loop() {
     gamma_t[12] = 0;  
     gamma_t[13] = 0; 
     gamma_t[14] = 0;
-    gamma_t[15] = 0.1;
+    gamma_t[15] = 0.01;
   }
-  temperatureBoxModel(temperature,t,u_t, fanOn,a_0,a_1, b_1, &A_0, A_1, &B_2);
-  t = t + 1;
+  t = t+1;
+  fanPower = (1.0-((float)fanCounter)/255);
+  if(fanPower < 0.3) {
+     fanPower = 0; 
+  }
+  if(fanPower > 1) {
+    fanPower = 1; 
+  }
+  temperatureBoxModel(temperature,millis()/1000.0,u_t, fanPower,a_0,a_1, a_2, b_1, &A_0, A_1, &B_2);
+
+#if SYSTEM_DEBUG
+  Serial.print(F("freeMemory() after executing temperatureBoxModel="));
+  Serial.println(freeMemory());
+#endif
 
 #if MATH_DEBUG
   Serial.println("");
-  Matrix.Print((float*)a_0, 1, 4,"a_0:");
+  Matrix.Print(a_0, 1, 4, "a_0:");
   Serial.println("");
-  Matrix.Print((float*)a_1, 4, 4, String("a_1"));
+  Matrix.Print(a_1, 4, 4, "a_1");
   Serial.println("");
-  Matrix.Print((float*)b_1, 4, 4, String("b_1"));
+  Matrix.Print(b_1, 4, 4, "b_1");
   Serial.println("");
 #endif
 
   y_th = temperature;
+  
   discreteStateEstimatorForContinuousSystems(m_t, gamma_t, y_t, y_th, h, a_0, a_1, &A_0, A_1, b_1, &B_2, m_th, gamma_th, &epsilon_th);
   // Update states and other values
   m_t[0] = m_th[0];
@@ -705,43 +904,57 @@ void loop() {
   y_t = y_th;
 
 #if MATH_DEBUG  
-  Matrix.Print((float*)gamma_t, 4, 4, String("Covariance"));
+  Matrix.Print((float*)gamma_t, 4, 4, "Covariance");
 #endif
 
 #if SYSTEM_DEBUG
   Serial.println("");
   Matrix.Print((float*)m_t, 1, 4,"Filtered states: Heater, Air, Sample, Ambient");
   Serial.println("");
-  Serial.println("Innovation");
+  Serial.println(F("Innovation"));
   Serial.print(epsilon_th);
   Serial.println("");
 #endif  
   
   // Temperary definition of goal temp and PID params
   float goalTemperature = 30;
+  /*
   float P = 0.2;
   float I = 0.03;
   float D = 1;
   float h = 1;
   float maxI = 0.75;
   float maxOutput = 1;
-  
+  */
   // turn fan of after we have been under 0.11 C to the goal for 5 rotations
   if(abs(goalTemperature - temperature) < 0.5) {
     if( fanCounter < 255 ) {
       fanCounter = fanCounter + 5;  
     }
   }
-  if(fanCounter == 255) {
-     fanOn = 0; 
-  }
   
   
-  float error = goalTemperature - m_t[1];
+  //float error = goalTemperature - m_t[1];
+  //float control = pid(error, P, I, D, h, maxI, maxOutput);
+  float control[4]; 
+  float goalState[4] = {m_th[0],goalTemperature,goalTemperature,m_th[3]};
+  float R =10;
   
-  float control = pid(error, P, I, D, h, maxI, maxOutput);
+  float H[16] = {0,0,0,0,
+                 0,65,0,0,
+                 0,0,65,0,
+                 0,0,0,0 };
+  float currentTime = millis()*0.001;
+  float timeStep = 1;
+  float terminalTime = currentTime + 60;
+  float dummy_a_0[4] = {0,0,0,0};// We have the information in a_0 also in a_2, so a_0 has to be empty for model using a_2
+   // we need a_0 for the state estimator
+  #if SYSTEM_DEBUG
+  Serial.print(F("freeMemory() before executing lqg="));
+  Serial.println(freeMemory());
+  #endif 
+  lqg( m_th, goalState,dummy_a_0 , a_1, a_2, H, R, currentTime, timeStep, terminalTime, control);
   
-  u_t = control;
   /*
   float fanControl = error;
   if(error > 1){
@@ -751,14 +964,21 @@ void loop() {
   if(error < 0 )
   {
     fanControl = 1;
-  } */ 
+  }*/
   
   // scale control for PWM
-  if(control < 0) {
-    control = 0;
+  if(control[0] < 0) {
+    control[0] = 0;
   }
   
-  byte controlPWM = (byte) (control*255); 
+  if(control[0] > 1) {
+    control[0] = 1;
+  }
+  
+  //u_t = control;
+  u_t = control[0];
+  
+  byte controlPWM = (byte) (control[0]*255); 
   byte fanPWM = fanCounter; 
   if(temperature > goalTemperature + 0.2 && fanCounter > 200) {
    fanPWM = 200; 
@@ -771,7 +991,7 @@ void loop() {
 #if SYSTEM_DEBUG   
   Serial.print(F(" PID debug information: "));
   Serial.print(F(" Control: "));
-  Serial.println(control);
+  Serial.println(control[0]);
   Serial.print(F(" ControlPWM: "));
   Serial.println(controlPWM);
   //Serial.print(F(" FanPWM: "));
@@ -805,7 +1025,7 @@ void loop() {
  #endif 
   
   
-  delay(1000);
+  //delay(1000);
   
 }
 
