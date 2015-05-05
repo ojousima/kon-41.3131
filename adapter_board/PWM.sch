@@ -29,11 +29,12 @@ LIBS:opto
 LIBS:atmel
 LIBS:contrib
 LIBS:valves
-EELAYER 25 0
+LIBS:adapter-cache
+EELAYER 24 0
 EELAYER END
 $Descr A4 11693 8268
 encoding utf-8
-Sheet 2 4
+Sheet 2 6
 Title ""
 Date ""
 Rev ""
