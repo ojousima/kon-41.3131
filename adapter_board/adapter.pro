@@ -1,4 +1,4 @@
-update=Tue 05 May 2015 18:31:50 EEST
+update=16.5.2015 18:11:26
 version=1
 last_client=kicad
 [cvpcb]
@@ -28,17 +28,7 @@ BoardOutlineThickness=0.09999999999999999
 ModuleOutlineThickness=0.15
 [eeschema]
 version=1
-PageLayoutDescrFile=
-SubpartIdSeparator=0
-SubpartFirstId=65
 LibDir=/home/otso/ownCloud/git/kicad/kicad-library/library
-NetFmtName=
-SpiceForceRefPrefix=0
-SpiceUseNetNumbers=0
-RptD_X=0
-RptD_Y=100
-RptLab=1
-LabSize=60
 [eeschema/libraries]
 LibName1=power
 LibName2=device
@@ -70,3 +60,4 @@ LibName27=opto
 LibName28=atmel
 LibName29=contrib
 LibName30=valves
+LibName31=logo

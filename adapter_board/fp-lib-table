@@ -6,4 +6,8 @@
   (lib (name Resistors_SMD)(type Github)(uri https://github.com/KiCad/Resistors_SMD.pretty)(options "")(descr ""))
   (lib (name SMD_Packages)(type Github)(uri https://github.com/KiCad/SMD_Packages.pretty)(options "")(descr ""))
   (lib (name Transistors_TO-220)(type Github)(uri https://github.com/KiCad/Transistors_TO-220.pretty)(options "")(descr ""))
+  (lib (name SMD_Switches)(type Github)(uri https://github.com/KiCad/Buttons_Switches_SMD.pretty)(options "")(descr ""))
+  (lib (name smd_packages_fork)(type Github)(uri https://github.com/ojousima/SMD_Packages.pretty-1)(options "")(descr ""))
+  (lib (name SMD_Capacitors)(type Github)(uri https://github.com/KiCad/Capacitors_SMD.pretty)(options "")(descr ""))
+  (lib (name Symbols)(type Github)(uri https://github.com/KiCad/Symbols.pretty)(options "")(descr ""))
 )

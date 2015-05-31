@@ -1,4 +1,21 @@
-#include <MatrixMath.h>
+#define TARGET_TEMPERATURE 31
+#define TSYS_DEBUG     0
+#define MATH_DEBUG  0
+#define SYSTEM_DEBUG  0
+#define BOX_ID 1 // for CSV 
+#if SYSTEM_DEBUG
+  // Memory diagnostics
+  #include <MemoryFree.h>
+#endif
+#define CSV_OUTPUT 1
+#define FLUSH_AT_START 0
+
+//Select control principle. Exactly one has to be selected.
+#define OPTIMAL_CONTROL 0
+#define PID_CONTROL     1
+#if !(OPTIMAL_CONTROL ^ PID_CONTROL) 
+  #error "Please select control strategy."
+#endif
 
 #define TSYS_RESET     0x1E
 #define TSYS_START_ADC 0x48
@@ -11,21 +28,6 @@
 #define TSYS_READ_5    0xAA
 #define TSYS_READ_6    0xAC
 #define TSYS_READ_7    0xAE
-
-#define TSYS_DEBUG     0
-
-#define MATH_DEBUG  0
-
-#define SYSTEM_DEBUG  0
-#if SYSTEM_DEBUG
-  // Memory diagnostics
-  #include <MemoryFree.h>
-#endif
-
-#define CSV_OUTPUT 1
-
-//TODO: Blow fan at full speed for a while
-#define FLUSH_AT_START 0
 
 // the sensor communicates using SPI, so include the library:
 #include <SPI.h>
@@ -753,7 +755,7 @@ void setup() {
 
 #if CSV_OUTPUT
 //Millis;Target temperature; Measured temperature; Heater PWM; Heater estimate; Air estimate; Sample estimate
-  Serial.println(F("Milliseconds;Target temperature; Measured temperature; Heater PWM; Heater estimate; Air estimate; Sample estimate"));
+  Serial.println(F("Milliseconds;Target temperature; Measured temperature; Heater PWM; Heater estimate; Air estimate; Sample estimate; Box ID"));
 #endif
 
 }
@@ -838,7 +840,7 @@ void loop() {
     m_t[0] = temperature; 
     m_t[1] = temperature;
     m_t[2] = temperature;
-    m_t[3] = 21;
+    m_t[3] = temperature;
     // Last measurement and current measurement
     
     y_t = temperature;
@@ -916,28 +918,29 @@ void loop() {
   Serial.println("");
 #endif  
   
-  // Temperary definition of goal temp and PID params
-  float goalTemperature = 30;
-  /*
+
+  // turn fan of after we have been under 0.11 C to the goal for 5 rotations
+  if(abs(TARGET_TEMPERATURE - temperature) < 0.5) {
+    if( fanCounter < 255 ) {
+      fanCounter = fanCounter + 5;  
+    }
+  }
+  
+#if PID_CONTROL
   float P = 0.2;
   float I = 0.03;
   float D = 1;
   float h = 1;
   float maxI = 0.75;
   float maxOutput = 1;
-  */
-  // turn fan of after we have been under 0.11 C to the goal for 5 rotations
-  if(abs(goalTemperature - temperature) < 0.5) {
-    if( fanCounter < 255 ) {
-      fanCounter = fanCounter + 5;  
-    }
-  }
   
-  
-  //float error = goalTemperature - m_t[1];
-  //float control = pid(error, P, I, D, h, maxI, maxOutput);
+  float error = TARGET_TEMPERATURE - m_t[1];
+  float control[1] = {pid(error, P, I, D, h, maxI, maxOutput)};
+#endif
+
+#if OPTIMAL_CONTROL
   float control[4]; 
-  float goalState[4] = {m_th[0],goalTemperature,goalTemperature,m_th[3]};
+  float goalState[4] = {m_th[0],TARGET_TEMPERATURE,TARGET_TEMPERATURE,m_th[3]};
   float R =10;
   
   float H[16] = {0,0,0,0,
@@ -949,22 +952,17 @@ void loop() {
   float terminalTime = currentTime + 60;
   float dummy_a_0[4] = {0,0,0,0};// We have the information in a_0 also in a_2, so a_0 has to be empty for model using a_2
    // we need a_0 for the state estimator
+   
   #if SYSTEM_DEBUG
   Serial.print(F("freeMemory() before executing lqg="));
   Serial.println(freeMemory());
   #endif 
   lqg( m_th, goalState,dummy_a_0 , a_1, a_2, H, R, currentTime, timeStep, terminalTime, control);
-  
-  /*
-  float fanControl = error;
-  if(error > 1){
-   fanControl = 1; 
-  }
-  
-  if(error < 0 )
-  {
-    fanControl = 1;
-  }*/
+ 
+#endif 
+
+ 
+
   
   // scale control for PWM
   if(control[0] < 0) {
@@ -980,7 +978,7 @@ void loop() {
   
   byte controlPWM = (byte) (control[0]*255); 
   byte fanPWM = fanCounter; 
-  if(temperature > goalTemperature + 0.2 && fanCounter > 200) {
+  if(temperature > TARGET_TEMPERATURE + 0.2 && fanCounter > 200) {
    fanPWM = 200; 
   }
   
@@ -1005,7 +1003,7 @@ void loop() {
   Serial.print(millis());
   Serial.print(";");
 
-  Serial.print(goalTemperature);
+  Serial.print(TARGET_TEMPERATURE);
   Serial.print(";");
   
   Serial.print(temperature);
@@ -1021,6 +1019,9 @@ void loop() {
   Serial.print(";");
   
   Serial.print(m_t[2]);
+  Serial.print(";");
+  
+  Serial.print(BOX_ID);
   Serial.println(";");
  #endif 
   
