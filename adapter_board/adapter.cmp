@@ -1,4 +1,4 @@
-Cmp-Mod V01 Created by Cvpcb (2015-02-06 BZR 5410)-product   date = 16.5.2015 18:12:40
+Cmp-Mod V01 Created by Cvpcb (2015-02-06 BZR 5410)-product   date = 1.6.2015 1:50:25
 
 BeginCmp
 TimeStamp = /55576E4C;
@@ -11,7 +11,7 @@ BeginCmp
 TimeStamp = /555773B9;
 Reference = C102;
 ValeurCmp = 100u;
-IdModule  = SMD_Capacitors:c_elec_4x5.3;
+IdModule  = SMD_Capacitors:c_elec_5x5.8;
 EndCmp
 
 BeginCmp

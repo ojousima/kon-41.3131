@@ -1,4 +1,4 @@
-Cmp-Mod V01 Created by Cvpcb (2015-02-06 BZR 5410)-product   date = 8.2.2015 18:34:54
+Cmp-Mod V01 Created by Cvpcb (2015-02-06 BZR 5410)-product   date = 31.5.2015 13:10:37
 
 BeginCmp
 TimeStamp = /54C22E30;
@@ -24,7 +24,7 @@ EndCmp
 BeginCmp
 TimeStamp = /54C288E9;
 Reference = D1;
-ValeurCmp = RB531S-30TE61;
+ValeurCmp = MM5Z6V2;
 IdModule  = SMD_Packages:SOD-523;
 EndCmp
 
@@ -113,6 +113,13 @@ IdModule  = Resistors_SMD:R_0201;
 EndCmp
 
 BeginCmp
+TimeStamp = /556AE247;
+Reference = JP5;
+ValeurCmp = JUMPER;
+IdModule  = Resistors_SMD:R_0603_HandSoldering;
+EndCmp
+
+BeginCmp
 TimeStamp = /54C269E1;
 Reference = P1;
 ValeurCmp = CONN_01X02;
@@ -129,40 +136,40 @@ EndCmp
 BeginCmp
 TimeStamp = /54C22D63;
 Reference = R1;
-ValeurCmp = R;
+ValeurCmp = 220;
 IdModule  = smd_passives:SMD0603_WAVE;
 EndCmp
 
 BeginCmp
 TimeStamp = /54C2660E;
 Reference = R2;
-ValeurCmp = R;
+ValeurCmp = 220;
 IdModule  = smd_passives:SMD0603_WAVE;
 EndCmp
 
 BeginCmp
 TimeStamp = /54C2664F;
 Reference = R3;
-ValeurCmp = R;
+ValeurCmp = 220;
 IdModule  = smd_passives:SMD0603_WAVE;
 EndCmp
 
 BeginCmp
 TimeStamp = /54C266A4;
 Reference = R4;
-ValeurCmp = R;
+ValeurCmp = 220;
 IdModule  = smd_passives:SMD0603_WAVE;
 EndCmp
 
 BeginCmp
 TimeStamp = /54C266C1;
 Reference = R5;
-ValeurCmp = R;
+ValeurCmp = 220;
 IdModule  = smd_passives:SMD0603_WAVE;
 EndCmp
 
 BeginCmp
-TimeStamp = /54C229C7;
+TimeStamp = /54D783B3;
 Reference = U1;
 ValeurCmp = TSYS01;
 IdModule  = Housings_DFN_QFN:QFN-16-1EP_4x4mm_Pitch0.65mm;
